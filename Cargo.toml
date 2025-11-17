@@ -5,7 +5,7 @@ description = "Asyncronus logger that prints all messages to STDOUT or STDERR in
 license = "MIT"
 authors = ["Dmitrii Patsura <talk@dmtry.me>"]
 edition = "2024"
-repository = "https://github.com/ovr/rust-nonblocking_logger/"
+repository = "https://github.com/ovr/rust-nonblocking_logger/g"
 
 [features]
 default = ["colored", "time"]
