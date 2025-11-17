@@ -8,7 +8,11 @@ edition = "2024"
 repository = "https://github.com/ovr/rust-nonblocking_logger"
 
 [features]
-default = ["colored", "time"]
+default = ["colors", "timestamps"]
+timestamps = ["time"]
+colors = ["colored"]
+threads = []
+stderr = []
 
 [dependencies]
 log = { version = "0.4.28", features = ["std"] }

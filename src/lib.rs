@@ -11,7 +11,7 @@ mod io;
 mod worker;
 
 #[cfg(feature = "timestamps")]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum Timestamps {
     None,
     Utc,
@@ -55,6 +55,12 @@ pub struct NonBlockingLoggerBuilder {
     options: NonBlockingOptions,
 }
 
+impl Default for NonBlockingLoggerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NonBlockingLoggerBuilder {
     pub fn new() -> Self {
         Self {
@@ -93,6 +99,49 @@ impl NonBlockingLoggerBuilder {
     #[cfg(feature = "colors")]
     pub fn with_colors(mut self, colors: bool) -> Self {
         self.options.colors = colors;
+        self
+    }
+
+    /// Don't display any timestamps.
+    ///
+    /// This method is only available if the `timestamps` feature is enabled.
+    #[must_use = "You must call init() to begin logging"]
+    #[cfg(feature = "timestamps")]
+    pub fn without_timestamps(mut self) -> Self {
+        self.options.timestamps = Timestamps::None;
+        self
+    }
+
+    /// Display timestamps using UTC.
+    ///
+    /// This method is only available if the `timestamps` feature is enabled.
+    #[must_use = "You must call init() to begin logging"]
+    #[cfg(feature = "timestamps")]
+    pub fn with_utc_timestamps(mut self) -> Self {
+        self.options.timestamps = Timestamps::Utc;
+        self
+    }
+
+    /// Display timestamps using a static UTC offset.
+    ///
+    /// This method is only available if the `timestamps` feature is enabled.
+    #[must_use = "You must call init() to begin logging"]
+    #[cfg(feature = "timestamps")]
+    pub fn with_utc_offset(mut self, offset: UtcOffset) -> Self {
+        self.options.timestamps = Timestamps::UtcOffset(offset);
+        self
+    }
+
+    /// Control the format used for timestamps.
+    ///
+    /// Without this, a default format is used depending on the timestamps type.
+    ///
+    /// The syntax for the format_description macro can be found in the
+    /// [`time` crate book](https://time-rs.github.io/book/api/format-description.html).
+    #[must_use = "You must call init() to begin logging"]
+    #[cfg(feature = "timestamps")]
+    pub fn with_timestamp_format(mut self, format: &'static [FormatItem<'static>]) -> Self {
+        self.options.timestamps_format = Some(format);
         self
     }
 
@@ -142,7 +191,9 @@ pub enum NonBlockingLoggerError {
 impl std::fmt::Display for NonBlockingLoggerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NonBlockingLoggerError::Error { reason } => write!(f, "NonBlockingLoggerError: {}", reason),
+            NonBlockingLoggerError::Error { reason } => {
+                write!(f, "NonBlockingLoggerError: {}", reason)
+            }
         }
     }
 }
@@ -208,21 +259,21 @@ impl Log for NonBlockingLogger {
             let level_string = {
                 #[cfg(feature = "colors")]
                 {
-                    if self.colors {
+                    if self.options.colors {
                         match record.level() {
-                            Level::Error => format!("{:<5}", record.level().to_string())
+                            log::Level::Error => format!("{:<5}", record.level().to_string())
                                 .red()
                                 .to_string(),
-                            Level::Warn => format!("{:<5}", record.level().to_string())
+                            log::Level::Warn => format!("{:<5}", record.level().to_string())
                                 .yellow()
                                 .to_string(),
-                            Level::Info => format!("{:<5}", record.level().to_string())
+                            log::Level::Info => format!("{:<5}", record.level().to_string())
                                 .cyan()
                                 .to_string(),
-                            Level::Debug => format!("{:<5}", record.level().to_string())
+                            log::Level::Debug => format!("{:<5}", record.level().to_string())
                                 .purple()
                                 .to_string(),
-                            Level::Trace => format!("{:<5}", record.level().to_string())
+                            log::Level::Trace => format!("{:<5}", record.level().to_string())
                                 .normal()
                                 .to_string(),
                         }
@@ -308,13 +359,17 @@ impl Log for NonBlockingLogger {
                 record.args()
             );
 
-            self.sender.send(worker::WorkerMessage::Log(message)).unwrap();
+            self.sender
+                .send(worker::WorkerMessage::Log(message))
+                .unwrap();
         }
     }
 
     fn flush(&self) {
         let (done_tx, done_rx) = crossbeam_channel::bounded(1);
-        self.sender.send(worker::WorkerMessage::Flush(done_tx)).unwrap();
+        self.sender
+            .send(worker::WorkerMessage::Flush(done_tx))
+            .unwrap();
 
         // Block until flush completes
         let _ = done_rx.recv();

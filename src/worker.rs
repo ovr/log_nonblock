@@ -75,6 +75,7 @@ impl LogWorker {
         Self::write_buffer(out, buf);
 
         if let Err(err) = out.flush() {
+            #[allow(clippy::collapsible_if)]
             if cfg!(debug_assertions) {
                 eprintln!("Error flushing stdout: {}", err);
             }
