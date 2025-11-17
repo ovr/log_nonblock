@@ -16,6 +16,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Extract version
+        id: version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -34,11 +41,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Release ${{ steps.version.outputs.tag }}
+          name: Release v${{ steps.version.outputs.tag }}
           body: |
-            ## Release ${{ steps.version.outputs.tag }}
+            ## Release v${{ steps.version.outputs.tag }}
 
-            Published to [crates.io](https://crates.io/crates/log_nonblock/${{ steps.version.outputs.version }})
+            Published to [crates.io](https://crates.io/crates/log_nonblock/v${{ steps.version.outputs.version }})
 
             ### Installation
             ```toml
