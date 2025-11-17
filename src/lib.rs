@@ -1,7 +1,10 @@
 use colored::Colorize;
 use log::{Level, LevelFilter, Log, Metadata, Record, SetLoggerError};
-use time::{OffsetDateTime, UtcOffset};
+use std::os::fd::AsRawFd;
 use time::format_description::FormatItem;
+use time::{OffsetDateTime, UtcOffset};
+
+mod io;
 
 #[cfg(feature = "timestamps")]
 #[derive(PartialEq)]
@@ -17,8 +20,9 @@ const TIMESTAMP_FORMAT_OFFSET: &[FormatItem] = time::macros::format_description!
 );
 
 #[cfg(feature = "timestamps")]
-const TIMESTAMP_FORMAT_UTC: &[FormatItem] =
-    time::macros::format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z");
+const TIMESTAMP_FORMAT_UTC: &[FormatItem] = time::macros::format_description!(
+    "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
+);
 
 pub struct NonBlockingLogger {
     /// The default logging level
@@ -82,7 +86,12 @@ impl NonBlockingLogger {
 
     /// Configure the logger
     pub fn max_level(&self) -> LevelFilter {
-        let max_level = self.module_levels.iter().map(|(_name, level)| level).copied().max();
+        let max_level = self
+            .module_levels
+            .iter()
+            .map(|(_name, level)| level)
+            .copied()
+            .max();
         max_level
             .map(|lvl| lvl.max(self.default_level))
             .unwrap_or(self.default_level)
@@ -91,6 +100,20 @@ impl NonBlockingLogger {
     pub fn init(self) -> Result<(), SetLoggerError> {
         #[cfg(all(feature = "colored", feature = "stderr"))]
         use_stderr_for_colors();
+
+        #[cfg(not(feature = "stderr"))]
+        {
+            if let Err(err) = io::set_nonblocking(std::io::stdout().as_raw_fd()) {
+                println!("Failed to set STDOUT to non-blocking mode: {}", err);
+            }
+        }
+
+        #[cfg(feature = "stderr")]
+        {
+            if let Err(err) = io::set_nonblocking(std::io::stdout().as_raw_fd()) {
+                println!("Failed to set STDERR to non-blocking mode: {}", err);
+            }
+        }
 
         log::set_max_level(self.max_level());
         log::set_boxed_logger(Box::new(self))
@@ -101,14 +124,14 @@ impl Log for NonBlockingLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         &metadata.level().to_level_filter()
             <= self
-            .module_levels
-            .iter()
-            /* At this point the Vec is already sorted so that we can simply take
-             * the first match
-             */
-            .find(|(name, _level)| metadata.target().starts_with(name))
-            .map(|(_name, level)| level)
-            .unwrap_or(&self.default_level)
+                .module_levels
+                .iter()
+                /* At this point the Vec is already sorted so that we can simply take
+                 * the first match
+                 */
+                .find(|(name, _level)| metadata.target().starts_with(name))
+                .map(|(_name, level)| level)
+                .unwrap_or(&self.default_level)
     }
 
     fn log(&self, record: &Record) {
@@ -118,11 +141,21 @@ impl Log for NonBlockingLogger {
                 {
                     if self.colors {
                         match record.level() {
-                            Level::Error => format!("{:<5}", record.level().to_string()).red().to_string(),
-                            Level::Warn => format!("{:<5}", record.level().to_string()).yellow().to_string(),
-                            Level::Info => format!("{:<5}", record.level().to_string()).cyan().to_string(),
-                            Level::Debug => format!("{:<5}", record.level().to_string()).purple().to_string(),
-                            Level::Trace => format!("{:<5}", record.level().to_string()).normal().to_string(),
+                            Level::Error => format!("{:<5}", record.level().to_string())
+                                .red()
+                                .to_string(),
+                            Level::Warn => format!("{:<5}", record.level().to_string())
+                                .yellow()
+                                .to_string(),
+                            Level::Info => format!("{:<5}", record.level().to_string())
+                                .cyan()
+                                .to_string(),
+                            Level::Debug => format!("{:<5}", record.level().to_string())
+                                .purple()
+                                .to_string(),
+                            Level::Trace => format!("{:<5}", record.level().to_string())
+                                .normal()
+                                .to_string(),
                         }
                     } else {
                         format!("{:<5}", record.level().to_string())
@@ -187,10 +220,19 @@ impl Log for NonBlockingLogger {
                 ""
             };
 
-            let message = format!("{}{} [{}{}] {}", timestamp, level_string, target, thread, record.args());
+            let message = format!(
+                "{}{} [{}{}] {}",
+                timestamp,
+                level_string,
+                target,
+                thread,
+                record.args()
+            );
 
             #[cfg(not(feature = "stderr"))]
-            println!("{}", message);
+            {
+                println!("{}", message);
+            }
 
             #[cfg(feature = "stderr")]
             eprintln!("{}", message);
@@ -198,7 +240,7 @@ impl Log for NonBlockingLogger {
     }
 
     fn flush(&self) {
-        todo!()
+        // TODO: Implement flush
     }
 }
 
@@ -206,7 +248,7 @@ impl Log for NonBlockingLogger {
 /// behaviour to check the status of STDERR instead.
 #[cfg(all(feature = "colored", feature = "stderr"))]
 fn use_stderr_for_colors() {
-    use std::io::{stderr, IsTerminal};
+    use std::io::{IsTerminal, stderr};
 
     colored::control::set_override(stderr().is_terminal());
 }

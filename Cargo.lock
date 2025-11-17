@@ -82,6 +82,7 @@ name = "rust-nonblocking_logger"
 version = "0.1.0"
 dependencies = [
  "colored",
+ "libc",
  "log",
  "time",
 ]
