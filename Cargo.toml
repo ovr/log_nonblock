@@ -1,9 +1,11 @@
 [package]
 name = "rust-nonblocking_logger"
 version = "0.1.0"
+description = "Asyncronus logger that prints all messages to STDOUT or STDERR in non blocking mode"
 license = "MIT"
 authors = ["Dmitrii Patsura <talk@dmtry.me>"]
 edition = "2024"
+repository = "https://github.com/ovr/rust-nonblocking_logger/"
 
 [features]
 default = ["colored", "time"]
