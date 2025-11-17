@@ -1,7 +1,7 @@
 # log-nonblock
 
-[![Crates.io](https://img.shields.io/crates/v/rust-nonblocking_logger.svg)](https://crates.io/crates/rust-nonblocking_logger)
-[![Documentation](https://docs.rs/rust-nonblocking_logger/badge.svg)](https://docs.rs/rust-nonblocking_logger)
+[![Crates.io](https://img.shields.io/crates/v/log_nonblock.svg)](https://crates.io/crates/log_nonblock)
+[![Documentation](https://docs.rs/log_nonblock/badge.svg)](https://docs.rs/log_nonblock)
 
 > A high-performance Rust logging library that implements truly non-blocking writes to STDOUT/STDERR.
 
