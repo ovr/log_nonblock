@@ -83,6 +83,20 @@ impl NonBlockingLoggerBuilder {
         }
     }
 
+    /// Set the 'default' log level.
+    ///
+    /// You can override the default level for specific modules and their sub-modules using [`with_module_level`]
+    ///
+    /// This must be called before [`env`]. If called after [`env`], it will override the value loaded from the environment.
+    ///
+    /// [`env`]: #method.env
+    /// [`with_module_level`]: #method.with_module_level
+    #[must_use = "You must call init() to begin logging"]
+    pub fn with_level(mut self, level: LevelFilter) -> Self {
+        self.options.default_level = level;
+        self
+    }
+
     #[must_use = "You must call init() to begin logging"]
     pub fn with_module_level(mut self, target: &str, level: LevelFilter) -> Self {
         self.options.module_levels.push((target.to_string(), level));
