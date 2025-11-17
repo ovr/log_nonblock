@@ -1,5 +1,8 @@
 # rust-nonblocking_logger
 
+[![Crates.io](https://img.shields.io/crates/v/rust-nonblocking_logger.svg)](https://crates.io/crates/rust-nonblocking_logger)
+[![Documentation](https://docs.rs/rust-nonblocking_logger/badge.svg)](https://docs.rs/rust-nonblocking_logger)
+
 A high-performance Rust logging library that implements truly non-blocking writes to STDOUT/STDERR.
 
 ## Motivation
