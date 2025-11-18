@@ -193,7 +193,28 @@ impl NonBlockingLoggerBuilder {
         self
     }
 
+    /// Initializes the non-blocking logger and sets it as the global logger.
+    ///
+    /// This method builds a logger instance, configures the global max log level,
+    /// and registers it with the `log` crate as the global logger.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the global logger has already been set.
     pub fn init(self) -> Result<NonBlockingLogger, SetLoggerError> {
+        let logger = self.build()?;
+
+        log::set_max_level(logger.max_level());
+        log::set_boxed_logger(Box::new(logger.clone()))?;
+
+        Ok(logger)
+    }
+
+    /// Builds a non-blocking logger instance without setting it as the global logger.
+    ///
+    /// Use this method if you want to manage the logger instance yourself. Otherwise,
+    /// use [`init`](#method.init) to automatically set it as the global logger.
+    pub fn build(self) -> Result<NonBlockingLogger, SetLoggerError> {
         #[cfg(all(feature = "colored", feature = "stderr"))]
         use_stderr_for_colors();
 
@@ -231,9 +252,6 @@ impl NonBlockingLoggerBuilder {
             sender,
             running,
         };
-
-        log::set_max_level(logger.max_level());
-        log::set_boxed_logger(Box::new(logger.clone()))?;
 
         Ok(logger)
     }
