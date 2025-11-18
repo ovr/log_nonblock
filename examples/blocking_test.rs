@@ -79,18 +79,12 @@ fn main() {
     // Log messages
     for i in 0..MESSAGE_COUNT {
         info!("Message {} {}", i, message);
-
-        // Progress indicator every 1000 messages
-        if (i + 1) % 1000 == 0 {
-            eprintln!("Progress: {}/{} messages logged", i + 1, MESSAGE_COUNT);
-        }
     }
 
     let log_duration = start.elapsed();
 
     // For log_nonblock, measure flush time separately
     if let Some(logger) = logger {
-        eprintln!("\nAll messages logged. Flushing...");
         let flush_start = Instant::now();
         log::logger().flush();
         let flush_duration = flush_start.elapsed();
