@@ -1,5 +1,4 @@
-use crossbeam_channel::{Receiver, Sender};
-use std::collections::VecDeque;
+use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use std::io;
 use std::io::Write;
 use std::sync::Arc;
@@ -46,81 +45,79 @@ impl LogWorker {
         }))
     }
 
-    fn write_buffer(out: &mut io::StdoutLock, buf: &mut VecDeque<u8>) {
+    fn write_buffer(out: &mut io::StdoutLock, buf: &[u8]) -> Result<(), io::Error> {
+        let mut cursor = 0;
+
         // Write all buffered data
-        while !buf.is_empty() {
-            let (front, _) = buf.as_slices();
-            match out.write(front) {
+        while cursor < buf.len() {
+            let slice = &buf[cursor..];
+            match out.write(slice) {
                 Ok(0) => {
                     #[cfg(unix)]
                     {
                         // Nothing accepted, wait for stdout to become writable using poll
-                        if let Err(err) = crate::io::wait_writable(out.as_raw_fd()) {
-                            crate::io::write_stderr_with_retry_internal(&format!(
-                                "Error waiting for stdout: {}",
-                                err
-                            ));
-                            break;
-                        }
+                        crate::io::wait_writable(out.as_raw_fd())?
                     }
 
                     #[cfg(not(unix))]
                     thread::sleep(Duration::from_millis(1));
                 }
                 Ok(n) => {
-                    // Remove written bytes
-                    for _ in 0..n {
-                        buf.pop_front();
-                    }
+                    // Advance cursor by number of bytes written
+                    cursor += n;
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     #[cfg(unix)]
                     {
                         // Wait for stdout to become writable using poll
-                        if let Err(err) = crate::io::wait_writable(out.as_raw_fd()) {
-                            crate::io::write_stderr_with_retry_internal(&format!(
-                                "Error waiting for stdout: {}",
-                                err
-                            ));
-                            break;
-                        }
+                        crate::io::wait_writable(out.as_raw_fd())?
                     }
 
                     #[cfg(not(unix))]
                     thread::sleep(Duration::from_millis(1));
                 }
-                Err(ref err) => {
+                Err(err) => {
                     // Hard error, give up
-                    crate::io::write_stderr_with_retry_internal(&format!(
-                        "Error flushing to stdout: {}",
-                        err
-                    ));
-                    break;
+                    return Err(err);
                 }
             }
         }
-    }
 
-    fn write_buffer_and_flush(out: &mut io::StdoutLock, buf: &mut VecDeque<u8>) {
-        Self::write_buffer(out, buf);
-
-        if let Err(err) = out.flush() {
-            crate::io::write_stderr_with_retry_internal(&format!("Error flushing stdout: {}", err));
-        }
+        Ok(())
     }
 
     fn run(&mut self) {
         let stdout = io::stdout();
         let mut out = stdout.lock();
-        let mut buf = VecDeque::<u8>::new();
+
+        let mut pipe_buffer = Vec::with_capacity(2 * 1024);
 
         while self.running.load(Ordering::SeqCst) {
             // block until at least one message
-            match self.receiver.recv() {
+            let first_message_to_pipe = match self.receiver.recv() {
                 Ok(msg) => match msg {
-                    WorkerMessage::Log(msg) => buf.extend(msg.as_bytes()),
+                    WorkerMessage::Log(msg) => {
+                        if msg.len() < 1280 {
+                            msg
+                        } else {
+                            if let Err(err) = Self::write_buffer(&mut out, msg.as_bytes()) {
+                                crate::io::write_stderr_with_retry_internal(&format!(
+                                    "Error waiting for stdout: {}",
+                                    err
+                                ))
+                            }
+
+                            continue;
+                        }
+                    }
                     WorkerMessage::Flush(done) => {
-                        Self::write_buffer_and_flush(&mut out, &mut buf);
+                        if let Err(err) = out.flush() {
+                            crate::io::write_stderr_with_retry_internal(&format!(
+                                "Error flushing stdout: {}",
+                                err
+                            ));
+                        }
+
                         // Signal completion (ignore if receiver was dropped)
                         let _ = done.send(());
 
@@ -128,23 +125,64 @@ impl LogWorker {
                     }
                 },
                 Err(_) => break, // channel closed
-            }
+            };
 
             // pipe one more message into the buffer (optimization)
-            while let Ok(msg) = self.receiver.try_recv() {
-                match msg {
-                    WorkerMessage::Log(msg) => buf.extend(msg.as_bytes()),
+            match self.receiver.try_recv() {
+                Ok(msg) => match msg {
+                    WorkerMessage::Log(second_message_to_pipe) => {
+                        pipe_buffer.extend_from_slice(first_message_to_pipe.as_bytes());
+                        drop(first_message_to_pipe);
+
+                        pipe_buffer.extend_from_slice(second_message_to_pipe.as_bytes());
+                        drop(second_message_to_pipe);
+
+                        let res = Self::write_buffer(&mut out, pipe_buffer.as_slice());
+
+                        pipe_buffer.clear();
+
+                        if let Err(err) = res {
+                            crate::io::write_stderr_with_retry_internal(&format!(
+                                "Error waiting for stdout: {}",
+                                err
+                            ))
+                        }
+                    }
                     WorkerMessage::Flush(done) => {
-                        Self::write_buffer_and_flush(&mut out, &mut buf);
+                        let res = Self::write_buffer(&mut out, first_message_to_pipe.as_bytes());
+                        let flush_res = out.flush();
+
                         // Signal completion (ignore if receiver was dropped)
                         let _ = done.send(());
 
+                        if let Err(err) = res {
+                            crate::io::write_stderr_with_retry_internal(&format!(
+                                "Error waiting for stdout: {}",
+                                err
+                            ))
+                        }
+
+                        if let Err(err) = flush_res {
+                            crate::io::write_stderr_with_retry_internal(&format!(
+                                "Error flushing stdout: {}",
+                                err
+                            ));
+                        }
+
                         continue;
                     }
-                };
+                },
+                Err(TryRecvError::Empty) => {
+                    if let Err(err) = Self::write_buffer(&mut out, first_message_to_pipe.as_bytes())
+                    {
+                        crate::io::write_stderr_with_retry_internal(&format!(
+                            "Error waiting for stdout: {}",
+                            err
+                        ))
+                    }
+                }
+                Err(TryRecvError::Disconnected) => break, // channel closed
             }
-
-            Self::write_buffer(&mut out, &mut buf);
         }
     }
 }
