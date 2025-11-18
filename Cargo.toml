@@ -24,6 +24,17 @@ crossbeam-channel = "0.5.15"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.177"
 
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+simple_logger = "5.0"
+
 [[example]]
 name = "test"
 required-features = ["colored", "time"]
+
+[[example]]
+name = "blocking_test"
+
+[[bench]]
+name = "logger_comparison"
+harness = false
