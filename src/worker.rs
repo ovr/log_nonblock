@@ -8,9 +8,6 @@ use std::thread::{self, JoinHandle};
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
 
-#[cfg(not(unix))]
-use std::time::Duration;
-
 pub enum WorkerMessage {
     /// Log message to be written
     Log(String),
@@ -71,8 +68,10 @@ impl LogWorker {
                         crate::io::wait_writable(pipe.as_raw_fd())?
                     }
 
-                    #[cfg(not(unix))]
-                    thread::sleep(Duration::from_millis(1));
+                    #[cfg(windows)]
+                    {
+                        // On Windows, just retry
+                    }
                 }
                 Ok(n) => {
                     // Advance cursor by number of bytes written
@@ -85,8 +84,10 @@ impl LogWorker {
                         crate::io::wait_writable(pipe.as_raw_fd())?
                     }
 
-                    #[cfg(not(unix))]
-                    thread::sleep(Duration::from_millis(1));
+                    #[cfg(windows)]
+                    {
+                        // On Windows, just retry
+                    }
                 }
                 Err(err) => {
                     // Hard error, give up

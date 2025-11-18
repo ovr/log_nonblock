@@ -220,7 +220,7 @@ impl NonBlockingLoggerBuilder {
 
         #[cfg(not(feature = "stderr"))]
         {
-            #[cfg(feature = "nonblock-io")]
+            #[cfg(all(unix, feature = "nonblock-io"))]
             if let Err(err) = io::set_nonblocking(std::io::stdout().as_raw_fd()) {
                 io::write_stdout_with_retry_internal(&format!(
                     "Failed to set STDOUT to non-blocking mode: {}",
@@ -231,7 +231,7 @@ impl NonBlockingLoggerBuilder {
 
         #[cfg(feature = "stderr")]
         {
-            #[cfg(feature = "nonblock-io")]
+            #[cfg(all(unix, feature = "nonblock-io"))]
             if let Err(err) = io::set_nonblocking(std::io::stderr().as_raw_fd()) {
                 io::write_stderr_with_retry_internal(&format!(
                     "Failed to set STDERR to non-blocking mode: {}",
